@@ -1,0 +1,9 @@
+{
+    "resolution_x": 1280,
+    "resolution_y": 720,
+    "fps": 30.0,
+    "extension": "avi",
+    "rec_folder": "recordings/name",
+    "rec_pattern": "%Y-%m-%d %H-%M-%S",
+    "rec_length": 180
+}
