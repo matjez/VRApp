@@ -10,34 +10,29 @@ from pathlib import Path
 class Camera:
 
     def __init__(self, name, camera_num=0,folder_path="recordings") -> None:
-
-
         self.settings = self.get_settings("name")
 
         self.folder_path = folder_path
         self.camera_num = camera_num
 
-        self.extension = "avi"
         self.max_weight = 8192
 
         self.vid_capture = cv2.VideoCapture(camera_num)
-        self.vid_capture.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
-        self.vid_capture.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
-        self.vid_capture.set(cv2.CAP_PROP_FPS, 30.0)
+        self.vid_capture.set(cv2.CAP_PROP_FRAME_WIDTH, self.settings["resolution_x"])
+        self.vid_capture.set(cv2.CAP_PROP_FRAME_HEIGHT, self.settings["resolution_y"])
+        self.vid_capture.set(cv2.CAP_PROP_FPS, self.settings["fps"])
 
     def test_device(self, camera_num):
         """Check if camera is available"""
-
         if self.vid_capture is None or not self.vid_capture.isOpened():
             print('Warning: unable to open video source: ', camera_num)
             exit()
 
     def create_path(self):
         """Create path for new clip"""       
-
-        cur_date = datetime.now().strftime("%Y-%m-%d %H-%M-%S")
-        path = "{}/{}/{}.{}".format(self.folder_path, self.camera_num,
-            cur_date, self.extension)
+        cur_date = datetime.now().strftime(self.settings["rec_pattern"])
+        path = "{}{}.{}".format(self.settings["rec_folder"],
+            cur_date, self.settings["extension"])
 
         return path
 
@@ -56,7 +51,9 @@ class Camera:
         path = "video_clip.avi"
 
         fourcc = cv2.VideoWriter_fourcc(*'XVID')
-        self.output = cv2.VideoWriter(path, fourcc, 30.0, (1280, 720))
+        self.output = cv2.VideoWriter(path, fourcc, self.settings["fps"], (self.settings["resolution_x"],
+         self.settings["resolution_y"]))
+
         start_time = time.time()
         frame_count = 0
         duration = 0
@@ -69,7 +66,7 @@ class Camera:
             frame_count += 1
 
             duration = time.time()-start_time
-            if int(duration) == 5:
+            if int(duration) == self.settings["rec_length"]:
 
                 actualFps = np.ceil(frame_count/duration) 
                 duration = 0
@@ -81,7 +78,8 @@ class Camera:
                 os.system('ffmpeg -y -i {} -c copy -f h264 tmp.h264'.format(path))
                 os.system('ffmpeg -y -loglevel error -r {} -i tmp.h264 -c copy {}'.format(actualFps,path))
 
-                break
+                if os.path.exists("tmp.h264"):
+                    os.remove("tmp.h264")
 
         self.vid_capture.release()
         self.output.release()
@@ -95,7 +93,7 @@ class Camera:
         new_settings[name]["resolution_y"] = 720
         new_settings[name]["fps"] = 30.0
         new_settings[name]["extension"] = "avi"
-        new_settings[name]["rec_folder"] = "recordings/{}".format("name") # add name of camera
+        new_settings[name]["rec_folder"] = "recordings/{}/".format("name") # add name of camera
         new_settings[name]["rec_pattern"] = r"%Y-%m-%d %H-%M-%S"
         new_settings[name]["rec_length"] = 180
 
@@ -125,6 +123,6 @@ class Camera:
 
 if __name__ == "__main__":
     my_camera = Camera("name")
-    # my_camera.capture_video()
+    my_camera.capture_video()
 
     print(my_camera.get_settings("kamera_1"))
