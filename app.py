@@ -1,5 +1,3 @@
-
-from webbrowser import get
 import cv2
 import time
 import os
@@ -8,17 +6,13 @@ import json
 
 from datetime import datetime
 from pathlib import Path
-from tools import get_camera_settings
 
 class Camera:
 
     def __init__(self, name, camera_num=0,folder_path="recordings") -> None:
 
-        if name in get_camera_settings():
-            self.settings = get_camera_settings()
 
-        else:
-            self.settings = self.set_def_settings()
+        self.settings = self.get_settings("name")
 
         self.folder_path = folder_path
         self.camera_num = camera_num
@@ -66,7 +60,6 @@ class Camera:
         start_time = time.time()
         frame_count = 0
         duration = 0
-        
         while True:
             ret, frame = self.vid_capture.read()
             if not ret:
@@ -76,43 +69,62 @@ class Camera:
             frame_count += 1
 
             duration = time.time()-start_time
-            if int(duration) == 180:
+            if int(duration) == 5:
+
+                actualFps = np.ceil(frame_count/duration) 
                 duration = 0
+                frame_count = 0
+                
                 self.output.release()
                 self.vid_capture.release()
-                # break
 
-            actualFps = np.ceil(frame_count/duration) 
+                os.system('ffmpeg -y -i {} -c copy -f h264 tmp.h264'.format(path))
+                os.system('ffmpeg -y -loglevel error -r {} -i tmp.h264 -c copy {}'.format(actualFps,path))
 
-        os.system('ffmpeg -y -i {} -c copy -f h264 tmp.h264'.format(path))
-        os.system('ffmpeg -y -r {} -i tmp.h264 -c copy {}'.format(actualFps,path))
+                break
 
         self.vid_capture.release()
         self.output.release()
         cv2.destroyAllWindows()
 
-    @staticmethod
-    def set_def_settings():
-        new_settings = {}
+    def _set_def_settings(self, config_file, name):
+        """Sets default settings"""
+        new_settings = {name:{}}
 
-        new_settings["resolution_x"] = 1280
-        new_settings["resolution_y"] = 720
-        new_settings["fps"] = 30.0
-        new_settings["extension"] = "avi"
-        new_settings["rec_folder"] = "recordings/{}".format("name") # add name of camera
-        new_settings["rec_pattern"] = r"%Y-%m-%d %H-%M-%S"
-        new_settings["rec_length"] = 180
+        new_settings[name]["resolution_x"] = 1280
+        new_settings[name]["resolution_y"] = 720
+        new_settings[name]["fps"] = 30.0
+        new_settings[name]["extension"] = "avi"
+        new_settings[name]["rec_folder"] = "recordings/{}".format("name") # add name of camera
+        new_settings[name]["rec_pattern"] = r"%Y-%m-%d %H-%M-%S"
+        new_settings[name]["rec_length"] = 180
 
-        json_object = json.dumps(new_settings, indent=4)
+        config_file.update(new_settings)
+        config_file = json.dumps(config_file, indent=4)
 
         with open("config.json","w") as f:
-            f.write(json_object)
+            f.write(config_file)
         
         return new_settings
+
+        
+    def get_settings(self, name):
+        """Returns settings from config.json. If there is no any settings in file
+        sets default settings and save it to config.json
+        """
+        with open("config.json","r") as f:
+            config_file = f.read()
+            config_file = json.loads(config_file)
+
+        if name in config_file.keys():
+            return config_file[name]
+
+        else:
+            return self._set_def_settings(config_file,name)
 
 
 if __name__ == "__main__":
     my_camera = Camera("name")
-    my_camera.capture_video()
+    # my_camera.capture_video()
 
-    print(my_camera.set_def_settings())
+    print(my_camera.get_settings("kamera_1"))
