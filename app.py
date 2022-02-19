@@ -12,6 +12,8 @@ from threading import Thread
 
 class Camera:
 
+    camera_nums = []
+
     def __init__(self) -> None:
 
         self.max_weight = 8192
@@ -23,10 +25,10 @@ class Camera:
             if self.check_if_available(i) == False:
                 break
             
+            Camera.camera_nums.append(i)
             settings = self.get_settings(str(i))
             loop_thread = Thread(target=self.capture_video,args=(i, settings, timer, rec_type, speed,)) #(x,)
             loop_thread.daemon = True
-            # self.process_jobs.append(loop_thread)
             loop_thread.start()
 
     def restart(self):
@@ -71,15 +73,15 @@ class Camera:
         if self.vid_capture.read()[0]==False:
             self.vid_capture.release()
             print(False)
-            return False
+            return False 
             
         else:
             self.vid_capture.release()
             print(True)
             return True
 
-    def save_video(self, path, actualFps):
-
+    def save_video(self, path, actualFps, speed=None):
+        """Copy recorded file to tmp.h264 then convert to corrected fps."""
         os.system('ffmpeg -y -i "{}" -c copy -f h264 tmp.h264'.format(path))
         os.system('ffmpeg -y -loglevel error -r {} -i tmp.h264 -c copy "{}"'.format(actualFps,path))
 
@@ -114,7 +116,6 @@ class Camera:
 
             ret, frame = self.vid_capture.read()
 
-
             if self.stop_flag == True or not ret:
                 break
 
@@ -125,25 +126,18 @@ class Camera:
 
             if int(duration) == 10:
 
+                if speed != None:
+                    frame_count = frame_count / speed
+
                 actualFps = np.ceil(frame_count/duration) 
                 duration = 0
                 frame_count = 0
 
                 self.output.release()
-
                 self.save_video(path, actualFps)
-
 
                 self.output = cv2.VideoWriter(path, fourcc, settings["fps"], (settings["resolution_x"],
                     settings["resolution_y"]))
-
-
-                # os.system('ffmpeg -y -i {} -c copy -f h264 tmp.h264'.format(path))
-                # os.system('ffmpeg -y -loglevel error -r {} -i tmp.h264 -c copy {}'.format(actualFps,path))
-
-                # if os.path.exists("tmp.h264"):
-                #     os.remove("tmp.h264")
-
 
         self.vid_capture.release()
         self.output.release()
@@ -170,7 +164,6 @@ class Camera:
         
         return new_settings
 
-        
     def get_settings(self, name):
         """Returns settings from config.json. If there is no any settings in file
         sets default settings and save it to config.json
