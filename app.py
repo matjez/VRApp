@@ -5,6 +5,7 @@ import numpy as np
 import json
 import platform
 
+from matplotlib import pyplot as plt
 from datetime import datetime
 from pathlib import Path
 from threading import Thread
@@ -123,25 +124,110 @@ class Camera:
             duration = time.time()-start_time
 
             frame_count += 1
-
-            if int(duration) == 10:
+            print(duration)
+            if int(duration) >= 5:
 
                 if speed != None:
                     frame_count = frame_count / speed
 
                 actualFps = np.ceil(frame_count/duration) 
-                duration = 0
+                start_time = time.time()
                 frame_count = 0
 
                 self.output.release()
                 self.save_video(path, actualFps)
 
+                path = self.create_path(settings, camera_num)
                 self.output = cv2.VideoWriter(path, fourcc, settings["fps"], (settings["resolution_x"],
                     settings["resolution_y"]))
 
         self.vid_capture.release()
         self.output.release()
         cv2.destroyAllWindows()
+
+    def capture_motion(self, camera_num, settings, timer):
+        """Recording video with motion detection."""
+        self.vid_capture = cv2.VideoCapture(camera_num)
+        self.vid_capture.set(cv2.CAP_PROP_FRAME_WIDTH, settings["resolution_x"])
+        self.vid_capture.set(cv2.CAP_PROP_FRAME_HEIGHT, settings["resolution_y"])
+        self.vid_capture.set(cv2.CAP_PROP_FPS, settings["fps"])
+        
+        ret, frame1 = self.vid_capture.read()
+        ret, frame2 = self.vid_capture.read()
+
+        path = self.create_path(settings, camera_num)
+        fourcc = cv2.VideoWriter_fourcc(*'XVID')
+        self.output = cv2.VideoWriter(path, fourcc, settings["fps"], (settings["resolution_x"],
+            settings["resolution_y"]))
+
+        timer = settings["motion_length"]
+        movement_time = time.time() # time when last movement intercepted
+        start_time = time.time() # time when started recording current clip
+
+        out_released = False
+        frame_count = 0
+
+        while self.vid_capture.isOpened():
+            diff = cv2.absdiff(frame1, frame2)
+            diff_gray = cv2.cvtColor(diff, cv2.COLOR_BGR2GRAY)
+            blur = cv2.GaussianBlur(diff_gray, (5, 5), 0)
+            _, thresh = cv2.threshold(blur, 20, 255, cv2.THRESH_BINARY)
+            dilated = cv2.dilate(thresh, None, iterations=3)
+            contours, _ = cv2.findContours(
+                dilated, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+
+            for contour in contours:
+                (x, y, w, h) = cv2.boundingRect(contour)
+                if cv2.contourArea(contour) < 3000:
+                    continue
+                cv2.rectangle(frame1, (x, y), (x+w, y+h), (0, 255, 0), 2)
+                cv2.putText(frame1, "Status: {}".format('Movement'), (10, 20), cv2.FONT_HERSHEY_SIMPLEX,
+                        1, (255, 0, 0), 3)
+
+                movement_time = time.time()
+
+                if out_released == True:
+                    out_released = False
+                    path = self.create_path(settings, camera_num)
+                    self.output = cv2.VideoWriter(path, fourcc, settings["fps"], (settings["resolution_x"],
+                        settings["resolution_y"]))
+
+            # cv2.drawContours(frame1, contours, -1, (0, 255, 0), 2)
+            
+            # cv2.imshow("Video", frame1)
+            frame1 = frame2
+            ret, frame2 = self.vid_capture.read()
+            frame_count += 1
+
+            if time.time() - movement_time <= timer:  # change5 to timer
+                print(time.time() - movement_time)
+                if out_released == False:
+                    self.output.write(frame1)
+
+            elif out_released == False:
+                print("else")
+                duration = time.time()-start_time
+                actualFps = np.ceil(frame_count/duration) 
+                
+                # reset variables
+                start_time = time.time()
+                frame_count = 0
+                out_released = True
+                
+                self.output.release()
+                self.save_video(path, actualFps) # need to make threading
+                
+
+            else:
+                print("pass")
+                pass
+
+            # if cv2.waitKey(50) == 27:
+            #     break
+
+        self.vid_capture.release()
+        cv2.destroyAllWindows()
+
 
     def _set_def_settings(self, config_file, name):
         """Sets default settings for specified camera."""
@@ -155,6 +241,7 @@ class Camera:
         new_settings[name]["rec_pattern"] = r"%Y-%m-%d %H-%M-%S"
         new_settings[name]["rec_length"] = 180
         new_settings[name]["timer_length"] = 300
+        new_settings[name]["motion_length"] = 30
 
         config_file.update(new_settings)
         config_file = json.dumps(config_file, indent=4)
@@ -182,6 +269,7 @@ class Camera:
 
 if __name__ == '__main__':
     my_camera = Camera()
-    my_camera.capture_video(0, my_camera.get_settings(0), None, "loop", 1)
+    # my_camera.capture_video(0, my_camera.get_settings(0), None, "loop", 1)
+    my_camera.capture_motion(0, my_camera.get_settings(0), 1)
 
     time.sleep(100)
