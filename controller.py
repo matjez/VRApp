@@ -1,21 +1,28 @@
 from app import Camera
-from threading import Thread
+import time
 
-class Controler:
+class Controller():
     def __init__(self) -> None:
-        pass
+    
+        self.camera_obj = Camera()
+        
+    #timer=100 type="loop"
 
-    def loop_recording(self):
-        pass
+    def loop_recording(self, timer=None):
+        self.camera_obj.start(rec_type="loop", timer=timer, speed=1)
 
-    def normal_recording(self):
-        pass
+    def motion_recording(self, timer=None):
+        self.camera_obj.start(rec_type="motion", timer=timer, speed=1)
 
-    def motion_recording(self):
-        pass
+    def time_lapse(self, timer=None):
+        self.camera_obj.start(rec_type="time_lapse", timer=timer, speed=8)
 
-    def terminate_recording(self):
-        pass
+    def terminate_recording(self, timer=None):
+        self.camera_obj.terminate_threads()
 
-    def restart_thread():
-        pass
+    def restart_thread(self, timer=None):
+        self.camera_obj.restart()
+
+test = Controller()
+test.loop_recording()
+time.sleep(100)
