@@ -14,9 +14,9 @@ from threading import Thread
 class Camera:
 
     camera_nums = []
+    all_settings = set()
 
     def __init__(self) -> None:
-
         self.max_weight = 8192
         self.stop_flag = False
 
@@ -27,8 +27,15 @@ class Camera:
                 break
             
             Camera.camera_nums.append(i)
-            settings = self.get_settings(str(i))
-            loop_thread = Thread(target=self.capture_video,args=(i, settings, timer, rec_type, speed,)) #(x,)
+            settings = Camera.get_settings(str(i))
+
+            if rec_type == "default":
+                loop_thread = Thread(target=self.capture_video,args=(i, settings, timer, speed,))
+            elif rec_type == "motion":
+                loop_thread = Thread(target=self.capture_motion,args=(i, settings, timer,)) 
+            else:
+                break
+
             loop_thread.daemon = True
             loop_thread.start()
 
@@ -61,13 +68,6 @@ class Camera:
 
         return path
 
-    def check_weight(self,path):
-        """Checks weight and returns value in MB"""
-        weight_kb = Path(path).stat().st_size
-        weight_mb = round(weight_kb / (1024 * 1024), 3)
-        
-        return weight_mb
-
     def check_if_available(self, camera_num):
         """Check if camera is up and return True or False"""
         self.vid_capture = cv2.VideoCapture(camera_num)
@@ -81,7 +81,7 @@ class Camera:
             print(True)
             return True
 
-    def save_video(self, path, actualFps, speed=None):
+    def save_video(self, path, actualFps):
         """Copy recorded file to tmp.h264 then convert to corrected fps."""
         os.system('ffmpeg -y -i "{}" -c copy -f h264 tmp.h264'.format(path))
         os.system('ffmpeg -y -loglevel error -r {} -i tmp.h264 -c copy "{}"'.format(actualFps,path))
@@ -89,8 +89,7 @@ class Camera:
         if os.path.exists("tmp.h264"):
             os.remove("tmp.h264")
 
-
-    def capture_video(self, camera_num, settings, timer=None, rec_type="loop", speed=1):
+    def capture_video(self, camera_num, settings, timer=None, speed=1):
         """Create VideoCapture object and record videos"""
         self.vid_capture = cv2.VideoCapture(camera_num)
         self.vid_capture.set(cv2.CAP_PROP_FRAME_WIDTH, settings["resolution_x"])
@@ -108,10 +107,10 @@ class Camera:
         duration = 0
         
         while True:
-
             if timer != None:
                 if time.time() - start_time >= timer:
                     actualFps = np.ceil(frame_count/duration)
+                    self.output.release()
                     self.save_video(path, actualFps)
                     break
 
@@ -124,9 +123,8 @@ class Camera:
             duration = time.time()-start_time
 
             frame_count += 1
-            print(duration)
+            # print(duration)
             if int(duration) >= 5:
-
                 if speed != None:
                     frame_count = frame_count / speed
 
@@ -168,6 +166,12 @@ class Camera:
         frame_count = 0
 
         while self.vid_capture.isOpened():
+            if timer != None:
+                if time.time() - start_time >= timer:
+                    actualFps = np.ceil(frame_count/duration)
+                    self.save_video(path, actualFps)
+                    break
+
             diff = cv2.absdiff(frame1, frame2)
             diff_gray = cv2.cvtColor(diff, cv2.COLOR_BGR2GRAY)
             blur = cv2.GaussianBlur(diff_gray, (5, 5), 0)
@@ -193,18 +197,18 @@ class Camera:
                         settings["resolution_y"]))
 
             # cv2.drawContours(frame1, contours, -1, (0, 255, 0), 2)
-            
             # cv2.imshow("Video", frame1)
+
             frame1 = frame2
             ret, frame2 = self.vid_capture.read()
             frame_count += 1
 
-            if time.time() - movement_time <= timer:  # change5 to timer
+            if time.time() - movement_time <= timer:  # if last detected movement < timer write video
                 print(time.time() - movement_time)
                 if out_released == False:
                     self.output.write(frame1)
 
-            elif out_released == False:
+            elif out_released == False:              # if interval between clips occured start new video writer
                 print("else")
                 duration = time.time()-start_time
                 actualFps = np.ceil(frame_count/duration) 
@@ -215,7 +219,7 @@ class Camera:
                 out_released = True
                 
                 self.output.release()
-                self.save_video(path, actualFps) # need to make threading
+                self.save_video(path, actualFps)    # need to make threading
                 
 
             else:
@@ -228,8 +232,8 @@ class Camera:
         self.vid_capture.release()
         cv2.destroyAllWindows()
 
-
-    def _set_def_settings(self, config_file, name):
+    @staticmethod
+    def _set_def_settings(config_file, name):
         """Sets default settings for specified camera."""
         new_settings = {name:{}}
 
@@ -251,12 +255,13 @@ class Camera:
         
         return new_settings
 
-    def get_settings(self, name):
+    @classmethod
+    def get_settings(cls,name):
         """Returns settings from config.json. If there is no any settings in file
         sets default settings and save it to config.json
         """
         name = str(name)
-
+        
         with open("config.json","r") as f:
             config_file = f.read()
             config_file = json.loads(config_file)
@@ -265,11 +270,21 @@ class Camera:
             return config_file[name]
 
         else:
-            return self._set_def_settings(config_file,name)
+            settings = Camera._set_def_settings(config_file,name)
+            cls.all_settings.add(settings)
+            return settings
+
+    @staticmethod
+    def check_weight(path):
+        """Checks weight and returns value in MB"""
+        weight_kb = Path(path).stat().st_size
+        weight_mb = round(weight_kb / (1024 * 1024), 3)
+        
+        return weight_mb
 
 if __name__ == '__main__':
     my_camera = Camera()
     # my_camera.capture_video(0, my_camera.get_settings(0), None, "loop", 1)
-    my_camera.capture_motion(0, my_camera.get_settings(0), 1)
+    my_camera.capture_motion(0, Camera.get_settings(0), 1)
 
     time.sleep(100)
