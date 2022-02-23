@@ -18,35 +18,50 @@ class Camera:
 
     def __init__(self) -> None:
         self.max_weight = 8192
+
+        self.preview_camera = None
         self.stop_flag = False
 
-    def start(self, timer, rec_type, speed):
+    def start(self, timer, rec_type, speed, ip_cameras = []):
         """Start threads. Searching for available devices and creating thread for every detected camera."""
-        for i in range(1):  # 0 - 9
-            if self.check_if_available(i) == False:
-                break
-            
-            Camera.camera_nums.append(i)
-            settings = Camera.get_settings(str(i))
-
-            if rec_type == "default":
+        if rec_type == "ip":
+            for camera in ip_cameras:
+                Camera.camera_nums.append(camera)
+                self.set_preview(camera)
+                settings = Camera.get_settings(str(camera))     
                 loop_thread = Thread(target=self.capture_video,args=(i, settings, timer, speed,))
-            elif rec_type == "motion":
-                loop_thread = Thread(target=self.capture_motion,args=(i, settings, timer,)) 
-            else:
-                break
+                
+        else:
+            for i in range(1):  # 0 - 9
+                if self.check_if_available(i) == False:
+                    break
+                
+                Camera.camera_nums.append(i)
+                settings = Camera.get_settings(str(i))
+                self.set_preview(i)
 
-            loop_thread.daemon = True
-            loop_thread.start()
+                if rec_type == "default":
+                    loop_thread = Thread(target=self.capture_video,args=(i, settings, timer, speed,))
+                elif rec_type == "motion":
+                    loop_thread = Thread(target=self.capture_motion,args=(i, settings, timer,)) 
+                else:
+                    break
+
+                loop_thread.daemon = True
+                loop_thread.start()
 
     def restart(self):
         """Stops every thread. If all threads are handled creates new ones."""
         self.terminate_threads()
         self.start()
 
+    def set_preview(self, name):
+        self.preview_camera = name
+
     def terminate_threads(self):
         """Set flag 'stop_flag' to True which will cause terminating of all threads."""
         self.stop_flag = True
+        Camera.camera_nums = []
 
     def test_device(self, camera_num):
         """Check if camera is available"""
@@ -109,6 +124,7 @@ class Camera:
         while True:
             if timer != None:
                 if time.time() - start_time >= timer:
+                    duration = time.time()-start_time
                     actualFps = np.ceil(frame_count/duration)
                     self.output.release()
                     self.save_video(path, actualFps)
@@ -117,14 +133,21 @@ class Camera:
             ret, frame = self.vid_capture.read()
 
             if self.stop_flag == True or not ret:
+                print("Exiting")
                 break
 
+            if self.preview_camera == camera_num:
+                cv2.imshow('Preview', frame)
+
+                if cv2.waitKey(1) & 0xFF == ord('q'):
+                    break
+                
             self.output.write(frame)  # write each frame to make video clip
             duration = time.time()-start_time
 
             frame_count += 1
             # print(duration)
-            if int(duration) >= 5:
+            if int(duration) >= settings["rec_length"]:
                 if speed != None:
                     frame_count = frame_count / speed
 
@@ -149,7 +172,7 @@ class Camera:
         self.vid_capture.set(cv2.CAP_PROP_FRAME_WIDTH, settings["resolution_x"])
         self.vid_capture.set(cv2.CAP_PROP_FRAME_HEIGHT, settings["resolution_y"])
         self.vid_capture.set(cv2.CAP_PROP_FPS, settings["fps"])
-        
+ 
         ret, frame1 = self.vid_capture.read()
         ret, frame2 = self.vid_capture.read()
 
@@ -164,10 +187,12 @@ class Camera:
 
         out_released = False
         frame_count = 0
+        duration = 0
 
         while self.vid_capture.isOpened():
             if timer != None:
                 if time.time() - start_time >= timer:
+                    duration = time.time()-start_time
                     actualFps = np.ceil(frame_count/duration)
                     self.save_video(path, actualFps)
                     break
@@ -231,7 +256,7 @@ class Camera:
 
         self.vid_capture.release()
         cv2.destroyAllWindows()
-
+    
     @staticmethod
     def _set_def_settings(config_file, name):
         """Sets default settings for specified camera."""
@@ -284,7 +309,11 @@ class Camera:
 
 if __name__ == '__main__':
     my_camera = Camera()
-    # my_camera.capture_video(0, my_camera.get_settings(0), None, "loop", 1)
-    my_camera.capture_motion(0, Camera.get_settings(0), 1)
+    my_camera.capture_video(0, my_camera.get_settings(0), None, 1)
+    # my_camera.capture_motion(0, Camera.get_settings(0), 1)
+    print("test")
+    time.sleep(3)
+    my_camera.set_preview(0)
+
 
     time.sleep(100)
