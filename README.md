@@ -3,6 +3,7 @@
  
 # Requirements
  -requirements.txt file
+ 
  -Windows 11(tested)
 
 Application should work on linux as well.
